@@ -1,6 +1,9 @@
 # 1. New API 渠道迁移脚本（Tampermonkey）
 
-这是一个油猴脚本，用来在 `*/console/channel*` 页面：
+这是一个油猴脚本，用来在 new-api 的渠道页面：
+
+- 旧版前端：`*/console/channel*`
+- 新版前端：`*/channels*`、`*/_authenticated/channels*`
 
 - **导出**：把渠道列表和配置导出成一个 `JSON` 文件
 - **导入**：把这个 `JSON` 文件导入到另一个实例里（用于迁移）
@@ -11,7 +14,7 @@
 
 我这边验证过的环境是：
 
-- new-api：`v0.11.5`
+- new-api：`v0.11.5`、`v1.0.0-rc.14`
 - 模式：自用模式
 
 如果你的版本/模式不一样：
@@ -56,7 +59,9 @@
 
 打开你的实例里的渠道页面：
 
-- `https://你的域名/console/channel`
+- 旧版前端：`https://你的域名/console/channel`
+- 新版前端：`https://你的域名/channels`
+- 某些新版路由也可能是：`https://你的域名/_authenticated/channels`
 
 页面右侧会出现一个小黑面板，能看到版本号（比如 `v0.3.4`）。
 
@@ -89,7 +94,7 @@
 ### 4.4 导入 JSON（迁移到另一个实例）
 
 1. 先在目标实例登录（要有创建渠道权限）
-2. 打开目标实例的：`/console/channel`
+2. 打开目标实例的渠道页：`/console/channel` 或 `/channels`
 3. 点右侧面板：`导入 JSON`
 4. 选择你之前导出的 `channels_*.json`
 5. 勾选你要导入的渠道
@@ -130,3 +135,4 @@
 
 - key 属于敏感信息。导出含 key 的 JSON 文件，请你自己保管好。
 - 不要把 2FA 的 secret 给任何脚本/任何人（很危险）。
+
