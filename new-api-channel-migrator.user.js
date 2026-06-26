@@ -1,9 +1,11 @@
 // ==UserScript==
 // @name         New API 渠道迁移（导出/导入）
 // @namespace    https://github.com/
-// @version      0.1.0
-// @description  在 /console/channel 页面导出/导入渠道配置（支持可选导出 key，可能需要 2FA/安全验证）
+// @version      0.4.0
+// @description  在 new-api 渠道页导出/导入渠道配置（兼容旧版 /console/channel 和新版 /channels）
 // @match        *://*/console/channel*
+// @match        *://*/channels*
+// @match        *://*/_authenticated/channels*
 // @run-at       document-start
 // @grant        GM_addStyle
 // @grant        GM_registerMenuCommand
@@ -14,7 +16,7 @@
 
   const APP = Object.freeze({
     NAME: 'New API 渠道迁移',
-    VERSION: '0.3.4',
+    VERSION: '0.4.0',
   });
 
   const UI = Object.freeze({
@@ -104,7 +106,11 @@
     // Small in-memory cache to avoid repeated key calls.
     keyCacheByChannelId: new Map(),
     uiReady: false,
+    styleReady: false,
+    routeHooksInstalled: false,
   };
+
+  const CHANNEL_PAGE_PREFIXES = Object.freeze(['/console/channel', '/channels', '/_authenticated/channels']);
 
   // ----------------------------
   // Small helpers
@@ -128,6 +134,21 @@
 
   function clamp(n, min, max) {
     return Math.max(min, Math.min(max, n));
+  }
+
+  function normalizePathname(pathname) {
+    const path = String(pathname || '/').trim() || '/';
+    if (path.length > 1 && path.endsWith('/')) return path.slice(0, -1);
+    return path;
+  }
+
+  function isChannelPagePath(pathname) {
+    const path = normalizePathname(pathname);
+    return CHANNEL_PAGE_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+  }
+
+  function isChannelPage() {
+    return isChannelPagePath(location.pathname);
   }
 
   function makeDraggable(targetEl, handleEl) {
@@ -874,6 +895,8 @@
   // ----------------------------
 
   function ensureStyle() {
+    if (state.styleReady) return;
+    state.styleReady = true;
     const css = `
       #${UI.PANEL_ID} {
         position: fixed;
@@ -1026,6 +1049,12 @@
     if (el) el.remove();
   }
 
+  function removePanel() {
+    const el = document.getElementById(UI.PANEL_ID);
+    if (el) el.remove();
+    state.uiReady = false;
+  }
+
   function showModal(title, bodyNode, actions) {
     closeModal();
     const header = h('div', { class: 'header' }, [
@@ -1053,7 +1082,7 @@
     const panel = h('div', { id: UI.PANEL_ID }, []);
     const header = h('div', { class: 'panel-header' }, [
       h('div', { class: 'panel-title' }, APP.NAME),
-      h('button', { class: 'panel-close', title: 'Close', onclick: () => panel.remove() }, '×'),
+      h('button', { class: 'panel-close', title: 'Close', onclick: removePanel }, '×'),
     ]);
 
     panel.appendChild(header);
@@ -1101,10 +1130,13 @@
   function openHelpModal() {
     const lines = [
       `当前站点：${location.origin}`,
+      `当前路径：${location.pathname}`,
+      `渠道页识别：${isChannelPage() ? '是' : '否'}`,
       '学习接口：已关闭（只走固定 API）',
       `鉴权头：Authorization ${state.authHeaders.Authorization ? '有' : '无'}，New-API-User ${state.authHeaders['New-API-User'] ? '有' : '无'}`,
       '',
       '提示：',
+      '0）当前脚本兼容旧版 /console/channel 和新版 /channels、/_authenticated/channels',
       '1）导出“含 key”会做一次“安全验证”（可能要 2FA 验证码）',
       '   - 验证码只会缓存到它过期（一般 30 秒）',
       '   - 安全验证会在服务端记一会儿（看接口返回的 expires_at）',
@@ -1493,6 +1525,38 @@
     }
   }
 
+  function syncPanelVisibility() {
+    if (isChannelPage()) ensurePanel();
+    else {
+      closeModal();
+      removePanel();
+    }
+  }
+
+  function installRouteHooks() {
+    if (state.routeHooksInstalled) return;
+    state.routeHooksInstalled = true;
+
+    const notifyRouteChange = () => {
+      window.setTimeout(syncPanelVisibility, 0);
+    };
+
+    const wrapHistoryMethod = (methodName) => {
+      const original = history[methodName];
+      if (typeof original !== 'function') return;
+      history[methodName] = function (...args) {
+        const result = original.apply(this, args);
+        notifyRouteChange();
+        return result;
+      };
+    };
+
+    wrapHistoryMethod('pushState');
+    wrapHistoryMethod('replaceState');
+    window.addEventListener('popstate', notifyRouteChange);
+    window.addEventListener('hashchange', notifyRouteChange);
+  }
+
   // ----------------------------
   // Bootstrap UI at DOM ready
   // ----------------------------
@@ -1504,8 +1568,8 @@
     else document.addEventListener('DOMContentLoaded', fn, { once: true });
   }
   onReady(() => {
-    // Only show UI on console/channel page (avoid match edge cases).
-    if (!location.pathname.startsWith('/console/channel')) return;
-    ensurePanel();
+    installRouteHooks();
+    syncPanelVisibility();
   });
 })();
+
